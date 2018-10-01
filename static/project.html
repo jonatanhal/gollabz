@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<body>
+  <h1>Gollabz[{{ .Name }}]</h1>
+  {{ $p := .Name }}
+  {{ range .Files }}
+  <a href="/f/{{$p}}/{{.}}">{{.}}</a>
+  <br/>
+  {{ end }}
+</body>
