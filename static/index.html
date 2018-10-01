@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+
+<body>
+  <h1>Gollabz</h1>
+  {{ range .Projects }}
+  <a href="/p/{{ .Name }}">{{ .Name }}</a>
+  <br/>
+  {{ end }}
+</body>
