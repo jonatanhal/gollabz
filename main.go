@@ -9,10 +9,12 @@ import (
 	"log"
 	"os"
 	"path"
+	"sync"
 
 	"html/template"
 	"net/http"
 	"path/filepath"
+	"io/ioutil"
 )
 
 const csp = "default-src 'none'; "+
@@ -23,11 +25,9 @@ const csp = "default-src 'none'; "+
 	"media-src 'none';"
 
 type Project struct {
-	// Mutex should go here
 	Name string
 	TODOs map[string]bool
-	Files []string
-	Opened map[string]*os.File
+	Files []*File
 }
 
 func (p *Project) UpdateFilelist() error {
@@ -38,7 +38,14 @@ func (p *Project) UpdateFilelist() error {
 		if !f.IsDir() {
 			if !needleInHaystack(f.Name(),p.Files) {
 				log.Printf("[Project{%s}.UpdateFilelist] adding file %s\n", p.Name, f.Name())
-				p.Files = append(p.Files,f.Name())
+				ff := new(File)
+				ff.Name = f.Name()
+				ff.Project = p.Name
+				b, err := ioutil.ReadFile(fmt.Sprintf("%s/%s/%s/%s",pwd,"projs",p.Name,ff.Name))
+				if err != nil {
+					ff.Contents = fmt.Sprintf("%s",b)
+				}
+				p.Files = append(p.Files,ff)
 			}
 		}
 		return nil
@@ -48,6 +55,19 @@ func (p *Project) UpdateFilelist() error {
 
 type State struct {
 	Projects []*Project
+}
+
+func (s *State) GetProjectFile(project, file string) (fh *File, err error) {
+	for _, p := range s.Projects {
+		if p.Name == project {
+			for _,v := range p.Files {
+				if v.Name == file {
+					return v, nil
+				}
+			}
+		}
+	}
+	return &File{}, fmt.Errorf("Project %s file %s: Not found", project, file)
 }
 
 func (s *State) GetProject(name string) (p *Project, err error) {
@@ -60,6 +80,7 @@ func (s *State) GetProject(name string) (p *Project, err error) {
 }
 
 type File struct {
+	sync.RWMutex
 	Name string
 	Project string
 	Contents string
@@ -79,9 +100,9 @@ var (
 
 )
 // string-based `in-slice` checker
-func needleInHaystack(needle string, haystack []string) bool {
+func needleInHaystack(needle string, haystack []*File) bool {
 	for _, n := range haystack {
-		if n == needle {
+		if n.Name == needle {
 			return true
 		}
 	}
@@ -95,6 +116,13 @@ func defaultHandler(w http.ResponseWriter, r *http.Request) {
 
 func updateHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Security-Policy",csp)
+	
+	// we only accept POST's
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	p := path.Clean(r.URL.Path)
 	match, err := path.Match("/u/*/*",p)
 	if err != nil {
@@ -103,6 +131,7 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !match {
+		log.Println("[updateHandler] no match bro!",p)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -124,7 +153,7 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 	// returning any content. Unlike a 204 response, this response
 	// requires that the requester reset the document view.
 	w.WriteHeader(http.StatusResetContent)
-	w.Header().Add("Location",fmt.Sprintf("/f/%s/%s",pr,n)
+	w.Header().Add("Location",fmt.Sprintf("/f/%s/%s",pr,n))
 	return
 }
 
@@ -219,6 +248,6 @@ func main() {
 	http.HandleFunc("/",defaultHandler)
 	http.HandleFunc("/p/",projectHandler)
 	http.HandleFunc("/f/",fileHandler)
-	http.HandleFunc("/u/",fileHandler)
+	http.HandleFunc("/u/",updateHandler)
 	log.Fatal(http.ListenAndServe(":8080",nil))
 }
