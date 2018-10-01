@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+
+<body>
+  <h1>Gollabz[{{ .Project }}]/{{.Name}}</h1>
+  <form id="goof" action="/f/{{.Project}}/{{.Name}}">
+  <input type="submit" value="Save">
+  </form>
+  <textarea form="goof">{{.Contents}}</textarea>
+</body>
